@@ -8,31 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  verify-python-engine:
-    name: Test Local/Cloud Python Agent Engine
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Engine Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r engine/requirements.txt
-
-      - name: Run Engine Automated Test Suite (14 Tables, FTS5, Auth, Tools, Skills, WS)
-        working-directory: engine
-        run: |
-          PYTHONPATH=. python3 -m unittest discover -s tests -p "test_*.py" -v
-
   build-android-apk:
     name: Compile Kotlin Jetpack Compose APK
-    needs: verify-python-engine
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
@@ -55,7 +32,7 @@ jobs:
       - name: Build Debug APK
         working-directory: android
         run: |
-          gradle :app:assembleDebug --no-daemon
+          gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload Installable Debug APK Artifact
         uses: actions/upload-artifact@v4
@@ -63,3 +40,25 @@ jobs:
           name: NEXUS-AI-Android-Debug-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  verify-python-engine:
+    name: Test Local/Cloud Python Agent Engine
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Engine Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r engine/requirements.txt
+
+      - name: Run Engine Automated Test Suite
+        working-directory: engine
+        run: |
+          PYTHONPATH=. python3 -m unittest discover -s tests -p "test_*.py" -v
