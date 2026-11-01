@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
 package com.nexus.ai.screens
 
 import androidx.compose.foundation.layout.*
@@ -123,11 +124,7 @@ fun ChatScreen(vm: NexusViewModel) {
                     NexusCard {
                         Text("Siap Menerima Perintah Bahasa Alami", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(4.dp))
-                        Text("Contoh perintah yang langsung dieksekusi Agent:
-• "Buat file catatan_target.md di workspace"
-• "Organisasi folder downloads"
-• "Riset arsitektur SQLite FTS5 dan simpan ke dokumen"
-• "Cek kode Python di folder projects"")
+                        Text("Contoh perintah yang langsung dieksekusi Agent:\n• Buat file catatan_target.md di workspace\n• Organisasi folder downloads\n• Riset arsitektur SQLite FTS5 dan simpan ke dokumen\n• Cek kode Python di folder projects")
                     }
                 }
             }
@@ -230,8 +227,7 @@ fun TasksScreen(vm: NexusViewModel) {
                 }
                 if (!task.recoverySteps.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
-                    Text("Langkah Pemulihan:
-${task.recoverySteps}", style = MaterialTheme.typography.labelSmall)
+                    Text("Langkah Pemulihan:\n${task.recoverySteps}", style = MaterialTheme.typography.labelSmall)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Alur 8 Tahap (Understand → Report):", style = MaterialTheme.typography.labelSmall)
@@ -253,15 +249,7 @@ ${task.recoverySteps}", style = MaterialTheme.typography.labelSmall)
 fun SkillsScreen(vm: NexusViewModel) {
     var folderName by remember { mutableStateOf("") }
     var skillMarkdown by remember {
-        mutableStateOf("---
-name: custom-helper
-description: Skill kustom pengguna
-version: 1.0.0
-required_tools:
-  - file_read
----
-# Custom Skill
-Instruksi kerja skill.")
+        mutableStateOf("---\nname: custom-helper\ndescription: Skill kustom pengguna\nversion: 1.0.0\nrequired_tools:\n  - file_read\n---\n# Custom Skill\nInstruksi kerja skill.")
     }
     var showInstaller by remember { mutableStateOf(false) }
 

@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
 package com.nexus.ai.screens
 
 import android.content.Intent
@@ -448,10 +449,8 @@ fun CloudRuntimeScreen(vm: NexusViewModel, onBack: () -> Unit) {
             NexusCard {
                 Text("Prinsip Kejujuran Arsitektur Hybrid", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "1. Anda TIDAK diwajibkan memiliki VPS berbayar; NEXUS AI berjalan penuh secara lokal di Termux.
-" +
-                    "2. Jika Anda mengaktifkan Cloud Runtime opsional, tugas riset/API dapat tetap berjalan saat HP offline.
-" +
+                    "1. Anda TIDAK diwajibkan memiliki VPS berbayar; NEXUS AI berjalan penuh secara lokal di Termux.\n" +
+                    "2. Jika Anda mengaktifkan Cloud Runtime opsional, tugas riset/API dapat tetap berjalan saat HP offline.\n" +
                     "3. Cloud Runtime TIDAK BISA mengakses file lokal HP, baterai, atau membuka aplikasi di HP ketika HP sedang offline.",
                     style = MaterialTheme.typography.bodyMedium
                 )

@@ -21,18 +21,13 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Setup Gradle 8.5
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.5"
-
-      - name: Build Debug APK
-        working-directory: android
+      - name: Configure Android SDK & Build Debug APK with Gradle 8.5
         run: |
-          gradle :app:assembleDebug --no-daemon --stacktrace
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          curl -sL https://services.gradle.org/distributions/gradle-8.5-bin.zip -o /tmp/gradle-8.5.zip
+          unzip -q /tmp/gradle-8.5.zip -d /tmp
+          /tmp/gradle-8.5/bin/gradle -p android :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload Installable Debug APK Artifact
         uses: actions/upload-artifact@v4
