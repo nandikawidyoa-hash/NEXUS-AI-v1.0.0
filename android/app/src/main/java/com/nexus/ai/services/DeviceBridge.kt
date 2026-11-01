@@ -44,14 +44,17 @@ object DeviceBridge {
         }
     }.getOrDefault(false)
 
-    fun copyToClipboard(context: Context, label: String, text: String) {
+    fun copyToClipboard(context: Context, label: String, text: String): Boolean = runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        cm?.setPrimaryClip(ClipData.newPlainText(label, text))
-    }
+            ?: return false
+        val clip = ClipData.newPlainText(label, text)
+        cm.setPrimaryClip(clip)
+        true
+    }.getOrDefault(false)
 
-    fun readClipboardText(context: Context): String {
+    fun readClipboardText(context: Context): String = runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         val item = cm?.primaryClip?.getItemAt(0)
-        return item?.text?.toString() ?: ""
-    }
+        item?.coerceToText(context)?.toString() ?: ""
+    }.getOrDefault("")
 }

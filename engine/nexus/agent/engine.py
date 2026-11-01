@@ -7,6 +7,7 @@ from nexus.memory.manager import MemoryManager
 from nexus.permissions.manager import PermissionManager
 from nexus.planner.planner import TaskPlanner
 from nexus.providers.manager import ProviderManager
+from nexus.skills.manager import SkillManager
 from nexus.tools.manager import ToolManager
 
 class AgentEngine:
@@ -124,6 +125,11 @@ class AgentEngine:
                 (user_msg_id, conversation_id, prompt, now),
             )
 
+        # Load Active Skills Context
+        skill_ctx = SkillManager.get_active_skills_context(prompt)
+        active_skill_names = [s["name"] for s in skill_ctx["active_skills"]]
+        matched_skill_names = skill_ctx["matched_skills"]
+
         # Step 1 & 2: Understand & Plan
         analysis = TaskPlanner.analyze_intent(prompt, requested_runtime=requested_runtime)
         task_id = f"task-{uuid.uuid4().hex[:10]}"
@@ -190,7 +196,8 @@ class AgentEngine:
         # Phase 1: Understand
         await _complete_step("understand", f"Intent={analysis['task_type']}, Risk={analysis['risk_level']} ({analysis['risk_reason']})")
         # Phase 2: Plan
-        await _complete_step("plan", f"Disusun 8 fase kerja; Tool utama={analysis['planned_tool'] or 'AI Reasoning'}")
+        skill_note = f"; Active Skills={', '.join(matched_skill_names or active_skill_names) or 'None'}"
+        await _complete_step("plan", f"Disusun 8 fase kerja; Tool utama={analysis['planned_tool'] or 'AI Reasoning'}{skill_note}")
         # Phase 3: Select Runtime
         await _complete_step("select_runtime", f"Runtime={analysis['selected_runtime']} — {analysis['runtime_note']}")
         # Phase 4: Select Model
@@ -241,7 +248,10 @@ class AgentEngine:
                 if analysis["planned_tool"] == "terminal_exec":
                     await ws_hub.broadcast("terminal_output", tool_res["output"])
         else:
-            exec_summary = "Menjalankan penalaran kontekstual AI Agent."
+            if matched_skill_names:
+                exec_summary = f"Menjalankan penalaran AI Agent dengan Skill aktif: {', '.join(matched_skill_names)}."
+            else:
+                exec_summary = "Menjalankan penalaran kontekstual AI Agent."
             await _complete_step("execute", exec_summary, status_val="completed")
 
         if tool_failed:
@@ -273,10 +283,14 @@ class AgentEngine:
             )
         await _complete_step("remember", "Konteks tugas disimpan ke SQLite Memory (FTS5).")
 
-        # Phase 8: Report (AI Completion + Streaming chunks via WebSocket)
+        # Phase 8: Report (AI Completion + Active Skills Injection + Streaming chunks via WebSocket)
+        base_sys = "Kamu adalah NEXUS AI, personal Android AI Agent dengan arsitektur hybrid local-cloud."
+        if skill_ctx["system_prompt_block"]:
+            base_sys = f"{base_sys}\n\n{skill_ctx['system_prompt_block']}"
+
         ai_reply, used_model = await ProviderManager.generate_completion(
             prompt=prompt,
-            system_instruction="Kamu adalah NEXUS AI, personal Android AI Agent dengan arsitektur hybrid local-cloud.",
+            system_instruction=base_sys,
             preferred_model_id=selected_model["id"],
             task_type=analysis["task_type"],
             context_summary=exec_summary,
@@ -306,7 +320,12 @@ class AgentEngine:
                     ai_reply,
                     used_model["model_name"],
                     used_model["provider_id"],
-                    json.dumps({"task_id": task_id, "runtime": analysis["selected_runtime"]}),
+                    json.dumps({
+                        "task_id": task_id,
+                        "runtime": analysis["selected_runtime"],
+                        "active_skills": active_skill_names,
+                        "matched_skills": matched_skill_names,
+                    }),
                     finish_ts,
                 ),
             )
@@ -319,5 +338,14 @@ class AgentEngine:
                 (ai_reply, finish_ts, task_id),
             )
 
-        log_activity("INFO", "agent", f"Completed task {task_id}", {"runtime": analysis["selected_runtime"], "model": used_model["model_name"]})
+        log_activity(
+            "INFO",
+            "agent",
+            f"Completed task {task_id}",
+            {
+                "runtime": analysis["selected_runtime"],
+                "model": used_model["model_name"],
+                "matched_skills": matched_skill_names,
+            },
+        )
         return AgentEngine.get_task(task_id)

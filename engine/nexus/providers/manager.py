@@ -19,7 +19,15 @@ class ProviderManager:
             return result
 
     @staticmethod
-    def add_provider(name: str, provider_type: str, base_url: str, api_key: str = "", priority: int = 10, rate_limit_rpm: int = 60, default_model_name: Optional[str] = None) -> Dict[str, Any]:
+    def add_provider(
+        name: str,
+        provider_type: str,
+        base_url: str,
+        api_key: str = "",
+        priority: int = 10,
+        rate_limit_rpm: int = 60,
+        default_model_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         pid = f"prov-{uuid.uuid4().hex[:8]}"
         now = _utc_now()
         clean_key = (api_key or "").strip()
@@ -27,13 +35,17 @@ class ProviderManager:
         masked = mask_api_key(clean_key) if clean_key else "Not configured"
         with db_session() as conn:
             conn.execute(
-                "INSERT INTO providers (id, name, provider_type, base_url, encrypted_api_key, key_masked, enabled, priority, rate_limit_rpm, usage_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?)",
+                """INSERT INTO providers
+                (id, name, provider_type, base_url, encrypted_api_key, key_masked, enabled, priority, rate_limit_rpm, usage_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?)""",
                 (pid, name, provider_type.lower(), base_url.strip().rstrip("/"), enc, masked, priority, rate_limit_rpm, now, now),
             )
             if default_model_name:
                 mid = f"mod-{uuid.uuid4().hex[:8]}"
                 conn.execute(
-                    "INSERT INTO models (id, provider_id, model_name, display_name, capabilities_json, context_window, is_default, enabled, created_at) VALUES (?, ?, ?, ?, '[\"chat\",\"planning\",\"coding\",\"tools\"]', 128000, 0, 1, ?)",
+                    """INSERT INTO models
+                    (id, provider_id, model_name, display_name, capabilities_json, context_window, is_default, enabled, created_at)
+                    VALUES (?, ?, ?, ?, '["chat","planning","coding","tools"]', 128000, 0, 1, ?)""",
                     (mid, pid, default_model_name.strip(), f"{name} - {default_model_name.strip()}", now),
                 )
         return ProviderManager.get_provider(pid)
@@ -80,6 +92,14 @@ class ProviderManager:
                         "UPDATE models SET model_name = ?, display_name = ?, is_default = 1, enabled = 1 WHERE id = ?",
                         (m_clean, f"{row['name']} ({m_clean})", mrow["id"]),
                     )
+                else:
+                    mid = f"mod-{uuid.uuid4().hex[:8]}"
+                    conn.execute(
+                        """INSERT INTO models
+                        (id, provider_id, model_name, display_name, capabilities_json, context_window, is_default, enabled, created_at)
+                        VALUES (?, ?, ?, ?, '["chat","planning","coding","tools"]', 128000, 1, 1, ?)""",
+                        (mid, provider_id, m_clean, f"{row['name']} ({m_clean})", now),
+                    )
         if model_name and model_name.strip():
             set_setting("auto_model_routing", False)
         return ProviderManager.get_provider(provider_id)
@@ -94,7 +114,9 @@ class ProviderManager:
     def list_models() -> List[Dict[str, Any]]:
         with db_session() as conn:
             rows = conn.execute(
-                "SELECT m.*, p.name as provider_name, p.provider_type, p.enabled as provider_enabled, p.key_masked FROM models m JOIN providers p ON p.id = m.provider_id ORDER BY p.priority ASC, m.id ASC"
+                """SELECT m.*, p.name as provider_name, p.provider_type, p.enabled as provider_enabled, p.key_masked
+                FROM models m JOIN providers p ON p.id = m.provider_id
+                ORDER BY p.priority ASC, m.id ASC"""
             ).fetchall()
             out = []
             for r in rows:
@@ -125,16 +147,25 @@ class ProviderManager:
             for m in models:
                 if m["id"] == preferred_model_id and m["enabled"]:
                     return m
+        # Always prioritize any model explicitly marked is_default if its provider has a key configured
         for m in models:
             if m["is_default"] and m["key_masked"] != "Not configured":
                 return m
+        # Next, pick any model whose provider has an API key configured
         configured = [m for m in models if m["enabled"] and m["provider_enabled"] and m["key_masked"] != "Not configured"]
         if configured:
             return configured[0]
+        # Otherwise return the default model
         for m in models:
             if m["is_default"]:
                 return m
-        return models[0]
+        return models[0] if models else {
+            "id": "mod-fallback-local",
+            "provider_id": "prov-gemini",
+            "model_name": "gemini-2.5-flash",
+            "display_name": "Built-in Local Agent",
+            "provider_type": "gemini",
+        }
 
     @staticmethod
     async def test_provider_connection(provider_id: str) -> Dict[str, Any]:
@@ -152,26 +183,44 @@ class ProviderManager:
             status_msg = "missing_api_key"
             with db_session() as conn:
                 conn.execute("UPDATE providers SET last_tested_at = ?, last_test_status = ? WHERE id = ?", (now, status_msg, provider_id))
-            return {"ok": False, "provider_id": provider_id, "status": status_msg, "message": f"API key belum diisi untuk {prov['name']}."}
+            return {
+                "ok": False,
+                "provider_id": provider_id,
+                "status": status_msg,
+                "message": f"API key belum diisi untuk {prov['name']}.",
+            }
 
         try:
-            reply = await ProviderManager._call_remote_provider(prov, model_name, api_key, "Jawab singkat: Koneksi NEXUS AI Berhasil!", "System")
+            reply = await ProviderManager._call_remote_provider(prov, model_name, api_key, "Jawab singkat: OK", "Test connection")
             ok = True
             status_str = "connected"
-            msg = f"BERHASIL terhubung ke {prov['name']} (Model: {model_name})!\nBalasan AI: {reply[:120]}"
+            msg = f"Terhubung ke {prov['name']} ({model_name})! Balasan: {reply[:80]}"
         except Exception as exc:
             ok = False
-            status_str = f"failed: {str(exc)[:50]}"
-            msg = f"GAGAL menghubungi {prov['name']} (Model: {model_name}):\n{exc}"
+            status_str = f"failed: {str(exc)[:60]}"
+            msg = f"Gagal menghubungi {prov['name']} ({model_name}): {exc}"
 
         with db_session() as conn:
             conn.execute("UPDATE providers SET last_tested_at = ?, last_test_status = ? WHERE id = ?", (now, status_str, provider_id))
-        return {"ok": ok, "provider_id": provider_id, "status": status_str, "tested_at": now, "message": msg}
+        return {
+            "ok": ok,
+            "provider_id": provider_id,
+            "status": status_str,
+            "tested_at": now,
+            "message": msg,
+        }
 
     @staticmethod
-    async def generate_completion(prompt: str, system_instruction: str = "", preferred_model_id: Optional[str] = None, task_type: str = "chat", context_summary: str = "") -> Tuple[str, Dict[str, Any]]:
+    async def generate_completion(
+        prompt: str,
+        system_instruction: str = "",
+        preferred_model_id: Optional[str] = None,
+        task_type: str = "chat",
+        context_summary: str = "",
+    ) -> Tuple[str, Dict[str, Any]]:
         selected = ProviderManager.select_model_for_task(task_type=task_type, preferred_model_id=preferred_model_id)
         all_models = ProviderManager.list_models()
+        # Only try models that ACTUALLY have an API key configured (never loop over unconfigured/localhost providers!)
         candidates = []
         for m in [selected] + [x for x in all_models if x["id"] != selected.get("id")]:
             if m.get("key_masked") and m.get("key_masked") != "Not configured":
@@ -199,13 +248,11 @@ class ProviderManager:
                 return text, candidate
             except Exception as exc:
                 last_error_msg = f"{prow['name']} ({candidate['model_name']}): {exc}"
+                log_activity("WARNING", "providers", f"Provider {prow['name']} failed", {"error": str(exc)})
                 continue
 
-        if context_summary and context_summary != "Menjalankan penalaran kontekstual AI Agent.":
-            return f"[Hasil Eksekusi Tool Lokal]\n{context_summary}", selected
-        if not any_key_configured:
-            return "⚠️ API Key belum diatur. Buka http://127.0.0.1:8765/panel di browser Chrome HP kamu untuk mengisi Endpoint, Model ID, dan API Key.", selected
-        return f"⚠️ Gagal memanggil AI: {last_error_msg}\nCek konfigurasi di http://127.0.0.1:8765/panel", selected
+        synthesized = ProviderManager._synthesize_local_agent_response(prompt, context_summary, selected, any_key_configured, last_error_msg)
+        return synthesized, selected
 
     @staticmethod
     async def _call_remote_provider(prov: Dict[str, Any], model_name: str, api_key: str, prompt: str, system_instruction: str) -> str:
@@ -221,15 +268,29 @@ class ProviderManager:
                 last_err = ""
                 for gm in gemini_models:
                     url = f"{base_url}/models/{gm}:generateContent?key={api_key}"
-                    payload = {"contents": [{"role": "user", "parts": [{"text": f"{system_instruction}\n\n{prompt}".strip()}]}]}
+                    payload = {
+                        "contents": [
+                            {
+                                "role": "user",
+                                "parts": [{"text": f"{system_instruction}\n\n{prompt}".strip()}],
+                            }
+                        ]
+                    }
                     r = await client.post(url, json=payload)
                     if r.status_code == 200:
-                        return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        data = r.json()
+                        return data["candidates"][0]["content"]["parts"][0]["text"]
                     last_err = f"HTTP {r.status_code}: {r.text[:160]}"
                 raise RuntimeError(last_err)
             else:
-                url = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
-                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                if base_url.endswith("/chat/completions"):
+                    url = base_url
+                else:
+                    url = f"{base_url}/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                }
                 messages = []
                 if system_instruction:
                     messages.append({"role": "system", "content": system_instruction})
@@ -237,4 +298,24 @@ class ProviderManager:
                 r = await client.post(url, headers=headers, json={"model": model_name, "messages": messages})
                 if r.status_code != 200:
                     raise RuntimeError(f"HTTP {r.status_code}: {r.text[:160]}")
-                return r.json()["choices"][0]["message"]["content"]
+                data = r.json()
+                return data["choices"][0]["message"]["content"]
+
+    @staticmethod
+    def _synthesize_local_agent_response(
+        prompt: str,
+        context_summary: str,
+        model_info: Dict[str, Any],
+        any_key_configured: bool = False,
+        last_error_msg: str = "",
+    ) -> str:
+        if context_summary and context_summary != "Menjalankan penalaran kontekstual AI Agent.":
+            return f"[Hasil Eksekusi Tool Lokal]\n{context_summary}"
+        if not any_key_configured:
+            return (
+                "⚠️ API Key Belum Diatur\n\n"
+                "Buka browser Chrome di HP kamu ke alamat:\n"
+                "👉 http://127.0.0.1:8765/panel\n\n"
+                "Di halaman tersebut kamu bisa langsung mengetik Endpoint URL, memilih/mengetik Nama Model bebas, dan menempelkan API Key dengan mudah!"
+            )
+        return f"⚠️ Gagal memanggil AI Provider: {last_error_msg}\n\nSilakan cek atau ubah Endpoint/Model/API Key melalui browser HP di: http://127.0.0.1:8765/panel"

@@ -46,13 +46,15 @@ class ProviderKeyUpdateRequest(BaseModel):
     api_key: str
     base_url: Optional[str] = None
     enabled: Optional[bool] = True
+    model_name: Optional[str] = None
 
 class ProviderTestRequest(BaseModel):
     provider_id: str
 
 class SkillInstallRequest(BaseModel):
     folder_name: str
-    skill_md_content: str
+    skill_md_content: str = ""
+    enable_immediately: bool = True
 
 class SkillToggleRequest(BaseModel):
     enabled: bool
@@ -227,7 +229,7 @@ async def add_provider_endpoint(req: ProviderCreateRequest):
 
 @router.put("/providers/{provider_id}/key")
 async def update_provider_key_endpoint(provider_id: str, req: ProviderKeyUpdateRequest):
-    prov = ProviderManager.update_api_key(provider_id, req.api_key, req.base_url, req.enabled)
+    prov = ProviderManager.update_api_key(provider_id, req.api_key, req.base_url, req.enabled, req.model_name)
     if not prov:
         raise HTTPException(status_code=404, detail="Provider not found")
     return {"provider": prov}
@@ -278,16 +280,61 @@ async def rollback_file_endpoint(req: RollbackRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 @router.get("/skills")
-async def get_skills():
+async def get_skills(scan: bool = Query(False)):
+    if scan:
+        SkillManager.scan_skills_directory()
     return {"skills": SkillManager.list_skills()}
+
+@router.post("/skills/scan")
+async def scan_skills_endpoint():
+    return SkillManager.scan_skills_directory()
+
+@router.get("/skills/{skill_id}/raw")
+async def get_skill_raw_endpoint(skill_id: str):
+    info = SkillManager.get_skill_raw(skill_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return info
 
 @router.post("/skills/install")
 async def install_skill_endpoint(req: SkillInstallRequest):
     try:
-        skill = SkillManager.install_skill(req.folder_name, req.skill_md_content)
+        skill = SkillManager.install_skill(req.folder_name, req.skill_md_content, req.enable_immediately)
         return {"skill": skill}
     except PermissionError as pe:
         raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/skills/{skill_id}/install")
+async def install_discovered_skill_endpoint(skill_id: str, enable: bool = Query(True)):
+    try:
+        skill = SkillManager.install_discovered_skill(skill_id, enable_immediately=enable)
+        return {"skill": skill}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/skills/{skill_id}/enable")
+async def enable_skill_endpoint(skill_id: str):
+    try:
+        updated = SkillManager.enable_skill(skill_id)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        return {"skill": updated}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/skills/{skill_id}/disable")
+async def disable_skill_endpoint(skill_id: str):
+    try:
+        updated = SkillManager.disable_skill(skill_id)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        return {"skill": updated}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -300,6 +347,15 @@ async def toggle_skill_endpoint(skill_id: str, req: SkillToggleRequest):
         return {"skill": updated}
     except PermissionError as pe:
         raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/skills/{skill_id}/uninstall")
+async def uninstall_skill_endpoint(skill_id: str, delete_files: bool = Query(False)):
+    try:
+        return SkillManager.uninstall_skill(skill_id, delete_files=delete_files)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @router.delete("/skills/{skill_id}")
 async def delete_skill_endpoint(skill_id: str):

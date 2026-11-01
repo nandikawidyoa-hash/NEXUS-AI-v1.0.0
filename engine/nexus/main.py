@@ -7,7 +7,7 @@ from nexus import __app_name__, __version__
 from nexus.api.routes import router
 from nexus.api.ws import ws_hub
 from nexus.config import HOST, PORT
-from nexus.database.db import db_session, init_db
+from nexus.database.db import DEFAULT_MODELS, DEFAULT_PROVIDERS, _utc_now, db_session, init_db
 from nexus.providers.manager import ProviderManager
 from nexus.security.auth import verify_token_string
 from nexus.skills.manager import SkillManager
@@ -50,7 +50,7 @@ PANEL_HTML = """<!DOCTYPE html>
     <input id="base_url" type="text" value="https://generativelanguage.googleapis.com/v1beta" placeholder="https://...">
 
     <label>3. Nama Model / Model ID (Bisa Diketik Bebas)</label>
-    <input id="model_name" type="text" value="gemini-2.5-flash" placeholder="Ketik model ID apa saja...">
+    <input id="model_name" type="text" value="gemini-2.5-flash" placeholder="Contoh: gemini-2.5-flash / deepseek-chat / gpt-4o">
     <div class="chips">
       <span class="chip" onclick="setModel('gemini-2.5-flash')">gemini-2.5-flash</span>
       <span class="chip" onclick="setModel('gemini-2.0-flash')">gemini-2.0-flash</span>
@@ -59,7 +59,7 @@ PANEL_HTML = """<!DOCTYPE html>
       <span class="chip" onclick="setModel('qwen-max')">qwen-max</span>
     </div>
 
-    <label>4. API Key</label>
+    <label>4. API Key (Kosongkan jika tidak ingin mengubah key yang sudah tersimpan)</label>
     <input id="api_key" type="password" placeholder="Tempel API Key di sini (AIza... atau sk-...)">
 
     <button onclick="saveAndTest()">Simpan & Tes Koneksi AI Sekarang</button>
@@ -68,7 +68,7 @@ PANEL_HTML = """<!DOCTYPE html>
 
   <div class="card">
     <h2>Status Konfigurasi Aktif</h2>
-    <div id="active_info" style="font-size:13px;color:#d1d5db;white-space:pre-wrap;">Memuat...</div>
+    <div id="active_info" style="font-size:13px;color:#d1d5db;">Memuat...</div>
   </div>
 
 <script>
@@ -84,10 +84,10 @@ async function loadActive() {
   const r = await fetch('/panel/state');
   const d = await r.json();
   document.getElementById('active_info').innerText =
-    'Model Aktif : ' + d.active_model.display_name + ' (' + d.active_model.model_name + ')\\n' +
-    'Provider    : ' + d.active_provider.name + '\\n' +
-    'Endpoint    : ' + d.active_provider.base_url + '\\n' +
-    'API Key     : ' + d.active_provider.key_masked + '\\n' +
+    'Model Aktif : ' + d.active_model.display_name + ' (' + d.active_model.model_name + ')\n' +
+    'Provider    : ' + d.active_provider.name + '\n' +
+    'Endpoint    : ' + d.active_provider.base_url + '\n' +
+    'API Key     : ' + d.active_provider.key_masked + '\n' +
     'Status Uji  : ' + d.active_provider.last_test_status;
 }
 async function saveAndTest() {
@@ -126,8 +126,20 @@ loadActive();
 def create_app() -> FastAPI:
     init_db()
     SkillManager.sync_filesystem_skills()
-    app = FastAPI(title=__app_name__, version=__version__)
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+    app = FastAPI(
+        title=__app_name__,
+        version=__version__,
+        description="NEXUS AI Hybrid Local-Cloud Personal Agent Engine for Android",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/panel", response_class=HTMLResponse)
     async def web_control_panel():
@@ -136,7 +148,12 @@ def create_app() -> FastAPI:
     @app.get("/panel/state")
     async def web_panel_state():
         mod = ProviderManager.select_model_for_task("chat")
-        prov = ProviderManager.get_provider(mod["provider_id"]) or {"name": "Default", "base_url": "", "key_masked": "Not configured", "last_test_status": "untested"}
+        prov = ProviderManager.get_provider(mod["provider_id"]) or {
+            "name": "Default",
+            "base_url": "",
+            "key_masked": "Not configured",
+            "last_test_status": "untested",
+        }
         return {"active_model": mod, "active_provider": prov}
 
     @app.post("/panel/save")
@@ -146,11 +163,19 @@ def create_app() -> FastAPI:
         base_url = body.get("base_url", "").strip()
         model_name = body.get("model_name", "").strip()
         api_key = body.get("api_key", "").strip()
-        ProviderManager.update_api_key(provider_id=pid, api_key=api_key, base_url=base_url, enabled=True, model_name=model_name)
+
+        ProviderManager.update_api_key(
+            provider_id=pid,
+            api_key=api_key,
+            base_url=base_url,
+            enabled=True,
+            model_name=model_name,
+        )
         with db_session() as conn:
             mrow = conn.execute("SELECT id FROM models WHERE provider_id = ? LIMIT 1", (pid,)).fetchone()
             if mrow:
                 ProviderManager.set_default_model(mrow["id"])
+
         test_res = await ProviderManager.test_provider_connection(pid)
         return JSONResponse(test_res)
 
@@ -158,16 +183,26 @@ def create_app() -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
-        token = websocket.headers.get("authorization") or websocket.headers.get("x-nexus-token") or websocket.query_params.get("token")
+        token = (
+            websocket.headers.get("authorization")
+            or websocket.headers.get("x-nexus-token")
+            or websocket.query_params.get("token")
+        )
         if not verify_token_string(token):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+
         await ws_hub.connect(websocket)
         try:
-            await websocket.send_json({"event": "connected", "data": {"service": __app_name__, "version": __version__}})
+            await websocket.send_json({
+                "event": "connected",
+                "data": {"service": __app_name__, "version": __version__},
+            })
             while True:
                 msg = await websocket.receive_text()
                 await websocket.send_json({"event": "pong", "data": {"echo": msg}})
+        except WebSocketDisconnect:
+            ws_hub.disconnect(websocket)
         except Exception:
             ws_hub.disconnect(websocket)
 

@@ -62,7 +62,15 @@ data class SkillItemModel(
     val enabled: Boolean,
     val isBuiltin: Boolean,
     val securityStatus: String,
-    val requiredTools: List<String> = emptyList()
+    val requiredTools: List<String> = emptyList(),
+    val status: String = if (enabled) "enabled" else "disabled",
+    val folderPath: String = "",
+    val instructions: String = "",
+    val rawContent: String = "",
+    val securityNotes: String = "",
+    val requiredPermissions: List<String> = emptyList(),
+    val validationErrors: List<String> = emptyList(),
+    val missingTools: List<String> = emptyList()
 )
 
 data class ToolItemModel(

@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -9,23 +10,44 @@ from typing import Any, Dict, List, Optional
 from nexus.config import DB_PATH, WORKSPACE_DIR
 
 _db_lock = threading.RLock()
+_active_conn = None
+_active_depth = 0
+_migrated_targets = set()
 
 def _utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+def _migrate_skills_columns(conn: sqlite3.Connection):
+    migrations = [
+        "ALTER TABLE skills ADD COLUMN status TEXT NOT NULL DEFAULT 'enabled'",
+        "ALTER TABLE skills ADD COLUMN raw_content TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE skills ADD COLUMN validation_errors_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE skills ADD COLUMN missing_tools_json TEXT NOT NULL DEFAULT '[]'",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
+
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    target = str(db_path or DB_PATH)
-    conn = sqlite3.connect(target, check_same_thread=False)
+    env_db = os.environ.get("NEXUS_DB_PATH")
+    target = str(db_path or (Path(env_db) if env_db else DB_PATH))
+    conn = sqlite3.connect(target, timeout=15.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    
     conn.execute("PRAGMA journal_mode=OFF;")
     conn.execute("PRAGMA synchronous=OFF;")
     conn.execute("PRAGMA temp_store=MEMORY;")
     conn.execute("PRAGMA foreign_keys=ON;")
+    if target not in _migrated_targets:
+        try:
+            has_skills = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='skills'").fetchone()
+            if has_skills:
+                _migrate_skills_columns(conn)
+                _migrated_targets.add(target)
+        except Exception:
+            pass
     return conn
-
-_active_conn = None
-_active_depth = 0
 
 @contextmanager
 def db_session(db_path: Optional[Path] = None):
@@ -193,10 +215,14 @@ CREATE TABLE IF NOT EXISTS skills (
     instructions TEXT NOT NULL,
     required_tools_json TEXT NOT NULL DEFAULT '[]',
     required_permissions_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'enabled',
     enabled INTEGER NOT NULL DEFAULT 1,
     is_builtin INTEGER NOT NULL DEFAULT 0,
     security_status TEXT NOT NULL DEFAULT 'verified',
     security_notes TEXT NOT NULL DEFAULT '',
+    raw_content TEXT NOT NULL DEFAULT '',
+    validation_errors_json TEXT NOT NULL DEFAULT '[]',
+    missing_tools_json TEXT NOT NULL DEFAULT '[]',
     installed_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -272,6 +298,7 @@ def init_db(db_path: Optional[Path] = None):
     now = _utc_now()
     with db_session(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+        _migrate_skills_columns(conn)
         for pid, name, ptype, url, prio, rpm in DEFAULT_PROVIDERS:
             conn.execute(
                 """INSERT OR IGNORE INTO providers
