@@ -89,16 +89,16 @@ fun HomeScreen(vm: NexusViewModel, onNavigate: (String) -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("tools") }) { Text("Tools") }
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("memory") }) { Text("Memory") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("tools") }) { Text("Tools") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("memory") }) { Text("Memory") }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("automations") }) { Text("Automation") }
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("device") }) { Text("Device Bridge") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("automations") }) { Text("Automation") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("device") }) { Text("Device Bridge") }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("approvals") }) { Text("Approvals ($pending)") }
-                        OutlinedButton(Modifier.weight(1f), onClick = { onNavigate("workspace") }) { Text("Workspace") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("approvals") }) { Text("Approvals ($pending)") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("workspace") }) { Text("Workspace") }
                     }
                 }
             }
