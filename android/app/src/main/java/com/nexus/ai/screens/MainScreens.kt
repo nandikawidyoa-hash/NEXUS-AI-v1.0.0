@@ -150,7 +150,7 @@ fun TasksScreen(vm: NexusViewModel) {
                     RiskBadge(task.riskLevel)
                 }
                 Text("Status: ${task.status.uppercase()} • Model: ${task.modelId}")
-                if (!task.resultSummary.isNullOrBlank() && task.resultSummary != "null") { Spacer(Modifier.height(6.dp)); Text(task.resultSummary, style = MaterialTheme.typography.bodyMedium) }
+                if (!task.resultSummary.isNullOrBlank() && task.resultSummary != "null") { Spacer(Modifier.height(6.dp)); Text(task.resultSummary.orEmpty(), style = MaterialTheme.typography.bodyMedium) }
                 Spacer(Modifier.height(6.dp))
                 task.steps.forEach { s -> Text("• ${s.title} [${s.status.uppercase()}]", style = MaterialTheme.typography.labelSmall) }
             }

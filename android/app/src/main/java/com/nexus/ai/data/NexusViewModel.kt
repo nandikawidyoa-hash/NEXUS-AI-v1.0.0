@@ -168,7 +168,7 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopAgentEmergency() { agentBusy = false; agentStopped = true; agentPhaseText = "AGENT DIHENTIKAN DARURAT."; viewModelScope.launch { api.requestJson("/agent/stop", "POST") } }
     fun resumeAgent() { agentStopped = false; agentPhaseText = "Agent aktif kembali."; viewModelScope.launch { api.requestJson("/agent/resume", "POST") } }
-    fun cancelTask(taskId: String) { agentBusy = false; tasks.replaceAll { if (it.id == taskId) it.copy(status = "cancelled") else it } }
+    fun cancelTask(taskId: String) { agentBusy = false; for (i in tasks.indices) { if (tasks[i].id == taskId) tasks[i] = tasks[i].copy(status = "cancelled") } }
     fun refreshTasks() {}
     fun refreshProvidersAndModels() { seedDefaults() }
     fun selectModel(model: AiModelItem) {
