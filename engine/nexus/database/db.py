@@ -17,25 +17,42 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     target = str(db_path or DB_PATH)
     conn = sqlite3.connect(target, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA locking_mode=EXCLUSIVE;")
+    
     conn.execute("PRAGMA journal_mode=OFF;")
     conn.execute("PRAGMA synchronous=OFF;")
     conn.execute("PRAGMA temp_store=MEMORY;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
+_active_conn = None
+_active_depth = 0
+
 @contextmanager
 def db_session(db_path: Optional[Path] = None):
+    global _active_conn, _active_depth
     with _db_lock:
-        conn = get_connection(db_path)
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        if _active_conn is not None and db_path is None:
+            _active_depth += 1
+            try:
+                yield _active_conn
+            finally:
+                _active_depth -= 1
+        else:
+            conn = get_connection(db_path)
+            if db_path is None:
+                _active_conn = conn
+                _active_depth = 1
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                if db_path is None:
+                    _active_depth = 0
+                    _active_conn = None
+                conn.close()
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS conversations (

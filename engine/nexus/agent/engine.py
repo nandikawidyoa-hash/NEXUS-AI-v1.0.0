@@ -64,6 +64,9 @@ class AgentEngine:
             calls = conn.execute("SELECT * FROM tool_calls WHERE task_id = ? ORDER BY created_at ASC", (task_id,)).fetchall()
             approvals = conn.execute("SELECT * FROM approvals WHERE task_id = ? ORDER BY requested_at DESC", (task_id,)).fetchall()
             d = dict(t)
+            d["result_summary"] = d.get("result_summary") or ""
+            d["error_message"] = d.get("error_message") or ""
+            d["recovery_steps"] = d.get("recovery_steps") or ""
             d["plan"] = json.loads(d.pop("plan_json", "[]"))
             d["steps"] = [dict(s) for s in steps]
             d["tool_calls"] = [dict(c) for c in calls]
@@ -77,6 +80,9 @@ class AgentEngine:
             out = []
             for r in rows:
                 d = dict(r)
+                d["result_summary"] = d.get("result_summary") or ""
+                d["error_message"] = d.get("error_message") or ""
+                d["recovery_steps"] = d.get("recovery_steps") or ""
                 d["plan"] = json.loads(d.pop("plan_json", "[]"))
                 out.append(d)
             return out
