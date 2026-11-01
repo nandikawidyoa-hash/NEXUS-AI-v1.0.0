@@ -17,7 +17,31 @@ from nexus.permissions.manager import PermissionManager
 
 BACKUP_DIR = WORKSPACE_DIR / "backups"
 
+KNOWN_ANDROID_PACKAGES = {
+    "tiktok": ("TikTok", ["com.ss.android.ugc.trill", "com.zhiliaoapp.musically", "com.zhiliaoapp.musically.go"]),
+    "whatsapp": ("WhatsApp", ["com.whatsapp", "com.whatsapp.w4b"]),
+    "wa": ("WhatsApp", ["com.whatsapp", "com.whatsapp.w4b"]),
+    "chrome": ("Google Chrome", ["com.android.chrome", "com.chrome.beta"]),
+    "youtube": ("YouTube", ["com.google.android.youtube"]),
+    "yt": ("YouTube", ["com.google.android.youtube"]),
+    "instagram": ("Instagram", ["com.instagram.android", "com.instagram.lite"]),
+    "ig": ("Instagram", ["com.instagram.android", "com.instagram.lite"]),
+    "telegram": ("Telegram", ["org.telegram.messenger"]),
+    "termux": ("Termux", ["com.termux"]),
+    "gmail": ("Gmail", ["com.google.android.gm"]),
+    "maps": ("Google Maps", ["com.google.android.apps.maps"]),
+    "settings": ("Pengaturan Android", ["com.android.settings"]),
+    "pengaturan": ("Pengaturan Android", ["com.android.settings"]),
+}
+
 TOOL_REGISTRY = [
+    {
+        "name": "android_app_launcher",
+        "category": "android_automation",
+        "risk_level": "low",
+        "description": "Membuka aplikasi Android terinstal (TikTok, WhatsApp, Chrome, YouTube, Instagram, Termux, dll.) atau mencari di Chrome melalui Android Device Bridge.",
+        "parameters": {"app_query": "string", "search_query": "string (optional)"},
+    },
     {
         "name": "file_list",
         "category": "file_management",
@@ -185,7 +209,29 @@ class ToolManager:
 
         backup_path: Optional[str] = None
         try:
-            if tool_name == "file_list":
+            if tool_name == "android_app_launcher":
+                app_q = str(args.get("app_query", "")).strip()
+                search_q = str(args.get("search_query", "")).strip()
+                if not app_q:
+                    raise ValueError("Nama aplikasi (app_query) kosong.")
+                lower_q = app_q.lower()
+                friendly, pkg_candidates = KNOWN_ANDROID_PACKAGES.get(
+                    lower_q, (app_q, [app_q] if "." in app_q else [])
+                )
+                output = {
+                    "action": "launch_app_or_search" if search_q else "launch_app",
+                    "app_query": app_q,
+                    "friendly_name": friendly,
+                    "package_candidates": pkg_candidates,
+                    "search_query": search_q,
+                    "device_bridge_instruction": (
+                        f"Membuka {friendly} dan mencari '{search_q}' melalui Android Device Bridge."
+                        if search_q
+                        else f"Membuka aplikasi {friendly} ({', '.join(pkg_candidates) or app_q}) melalui Android Device Bridge."
+                    ),
+                }
+
+            elif tool_name == "file_list":
                 target = ToolManager._resolve_safe_path(args.get("subpath", "."))
                 items = []
                 if target.exists() and target.is_dir():
@@ -329,7 +375,6 @@ class ToolManager:
                 q = str(args.get("query", "")).strip()
                 results = []
                 try:
-                    async_res = None
                     with httpx.Client(timeout=5.0) as client:
                         resp = client.get("https://html.duckduckgo.com/html/", params={"q": q})
                         if resp.status_code == 200:
@@ -402,17 +447,19 @@ class ToolManager:
                             "syntax_ok": False,
                             "error": f"Line {se.lineno}: {se.msg}",
                         })
-                output = {"inspected_path": str(target), "files": files_report}
+                output = {"inspected_count": len(files_report), "files": files_report}
 
             elif tool_name == "code_test":
                 target = ToolManager._resolve_safe_path(args.get("target", "projects"))
-                proc = subprocess.run(
-                    ["python3", "-m", "py_compile"] + ([str(target)] if target.is_file() else [str(p) for p in target.rglob("*.py")]),
-                    cwd=str(WORKSPACE_DIR),
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                ) if (target.is_file() or list(target.rglob("*.py"))) else None
+                py_files = [str(target)] if target.is_file() else [str(p) for p in target.rglob("*.py")]
+                proc = None
+                if py_files:
+                    proc = subprocess.run(
+                        ["python3", "-m", "py_compile"] + py_files[:20],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
                 output = {
                     "target": str(target),
                     "passed": (proc.returncode == 0) if proc else True,

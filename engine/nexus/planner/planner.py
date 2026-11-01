@@ -17,7 +17,14 @@ WORKFLOW_PHASES = [
 LOCAL_ONLY_KEYWORDS = [
     "file", "folder", "dokumen", "workspace", "backup", "terminal", "shell",
     "baterai", "battery", "kamera", "camera", "clipboard", "intent", "aplikasi", "apk",
+    "buka ", "tiktok", "whatsapp", "chrome", "youtube", "instagram", "telegram", "termux",
 ]
+
+APP_LAUNCH_REGEX = re.compile(
+    r"^\s*(?:tolong\s+|coba\s+|nexus\s+)?(?:buka|jalankan|open|launch)\s+(?:aplikasi\s+|app\s+)?([a-zA-Z0-9_.\-]+)(?:\s+(?:dan|lalu|untuk)\s+(?:cari|search|buka)\s+(.+))?\s*$",
+    re.IGNORECASE,
+)
+
 
 class TaskPlanner:
     @staticmethod
@@ -29,7 +36,18 @@ class TaskPlanner:
         planned_tool: Optional[str] = None
         planned_args: Dict[str, Any] = {}
 
-        if any(w in lower for w in ("buat file", "tulis file", "simpan catatan", "write file")):
+        app_match = APP_LAUNCH_REGEX.match(prompt.strip())
+        if app_match and app_match.group(1).lower() not in ("file", "folder", "dokumen", "catatan"):
+            app_target = app_match.group(1).strip()
+            search_query = (app_match.group(2) or "").strip()
+            task_type = "android_automation"
+            planned_tool = "android_app_launcher"
+            planned_args = {
+                "app_query": app_target,
+                "search_query": search_query,
+            }
+            requires_local_device = True
+        elif any(w in lower for w in ("buat file", "tulis file", "simpan catatan", "write file")):
             task_type = "file_management"
             planned_tool = "file_write"
             match_name = re.search(r"([a-zA-Z0-9_\-]+\.(?:txt|md|py|json))", prompt)
@@ -70,12 +88,12 @@ class TaskPlanner:
 
         default_rt = requested_runtime or get_setting("active_runtime", "local")
         selected_runtime = default_rt
-        runtime_note = "Local Runtime (Termux) aktif dan dipilih sebagai eksekutor utama."
+        runtime_note = "Local Runtime (Termux / Android Device Bridge) aktif dan dipilih sebagai eksekutor utama."
         if selected_runtime == "cloud" and requires_local_device:
             runtime_note = (
-                "PERINGATAN ARSITEKTUR: Tugas ini membutuhkan akses file/perangkat lokal HP. "
+                "PERINGATAN ARSITEKTUR: Tugas ini membutuhkan akses file/aplikasi lokal HP. "
                 "Cloud Runtime TIDAK BISA mengakses file atau aplikasi lokal HP saat HP offline. "
-                "Dialihkan ke Local Runtime (atau masuk antrean lokal hingga HP online)."
+                "Dialihkan ke Local Runtime."
             )
             selected_runtime = "local"
 

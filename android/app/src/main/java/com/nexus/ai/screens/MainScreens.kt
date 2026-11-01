@@ -81,11 +81,67 @@ fun HomeScreen(vm: NexusViewModel, onNavigate: (String) -> Unit) {
     val activeSkillsCount = vm.skills.count { it.enabled && it.status == "enabled" }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("NEXUS AI v2.0 • Cyber-Droid", style = MaterialTheme.typography.headlineMedium)
+            Text("NEXUS AI v2.1 • Cyber-Droid Agent", style = MaterialTheme.typography.headlineMedium)
             Text(vm.statusBanner, style = MaterialTheme.typography.bodyMedium)
         }
         item { NexusAgentCharacterCard(vm.agentBusy, vm.agentPhaseText, "${vm.providerNameState} (${vm.modelNameState})") }
         item { EmergencyStopBanner(vm.agentStopped, { vm.stopAgentEmergency() }, { vm.resumeAgent() }) }
+
+        item {
+            NexusCard {
+                Text("Pintasan Buka Aplikasi & Android Automation", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Foreground Bridge: ${if (vm.foregroundServiceActive) "AKTIF" else "BELUM AKTIF"} • Accessibility: ${if (vm.accessibilityConnected) "AKTIF" else "BELUM AKTIF"} • Terdeteksi ${vm.installedApps.size} Aplikasi",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("TikTok", "WhatsApp", "Chrome", "YouTube", "Instagram", "Termux").forEach { appName ->
+                        OutlinedButton(onClick = { vm.enqueueAndRunAutomationTask("Buka $appName") }) {
+                            Text("Buka $appName")
+                        }
+                    }
+                }
+                if (vm.appLauncherStatusMessage.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(vm.appLauncherStatusMessage, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        item {
+            NexusCard {
+                Text("Pusat Kendali Utama & AI Studio", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(modifier = Modifier.weight(1f), onClick = { onNavigate("device") }) { Text("Device Bridge & App") }
+                        Button(modifier = Modifier.weight(1f), onClick = { onNavigate("video") }) { Text("Generative Video AI") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("diagnostics") }) { Text("Diagnostics & Test") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("automations") }) { Text("Automation Queue") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("providers") }) { Text("Model & Router") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("tools") }) { Text("Tools (${vm.tools.size})") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("memory") }) { Text("Memory") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("logs") }) { Text("Logs (${vm.logs.size})") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("approvals") }) { Text("Approvals ($pending)") }
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("workspace") }) { Text("Workspace") }
+                    }
+                }
+            }
+        }
+
         item {
             NexusCard {
                 Text("Model, Router & Skills Aktif", style = MaterialTheme.typography.titleMedium)
@@ -94,26 +150,6 @@ fun HomeScreen(vm: NexusViewModel, onNavigate: (String) -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onNavigate("providers") }) { Text("Atur Model & Router") }
                     OutlinedButton(onClick = { vm.testCurrentAiRouter() }) { Text("Tes Koneksi AI") }
-                }
-            }
-        }
-        item {
-            NexusCard {
-                Text("Pusat Kendali Pendukung", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("tools") }) { Text("Tools") }
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("memory") }) { Text("Memory") }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("automations") }) { Text("Automation") }
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("device") }) { Text("Device Bridge") }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("approvals") }) { Text("Approvals ($pending)") }
-                        OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("workspace") }) { Text("Workspace") }
-                    }
                 }
             }
         }
@@ -140,7 +176,25 @@ fun ChatScreen(vm: NexusViewModel) {
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Chat & Perintah Agent (${vm.modelNameState})", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                "Buka TikTok",
+                "Buka WhatsApp",
+                "Buka Chrome dan cari tutorial Android",
+                "Buka YouTube"
+            ).forEach { quickCmd ->
+                FilterChip(
+                    selected = false,
+                    onClick = { vm.sendChatCommand(quickCmd) },
+                    label = { Text(quickCmd, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         NexusAgentCharacterCard(vm.agentBusy, vm.agentPhaseText, "${vm.providerNameState} (${vm.modelNameState})")
 
         if (copyBannerText.isNotBlank()) {
@@ -223,7 +277,7 @@ fun ChatScreen(vm: NexusViewModel) {
                 value = inputText,
                 onValueChange = { inputText = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Ketik perintah atau pertanyaan...") },
+                placeholder = { Text("Ketik 'Buka TikTok', 'Buka WhatsApp', atau tanya AI...") },
                 maxLines = 4
             )
             Button(
@@ -255,7 +309,7 @@ fun TasksScreen(vm: NexusViewModel) {
         item { NexusAgentCharacterCard(vm.agentBusy, vm.agentPhaseText, "${vm.providerNameState} (${vm.modelNameState})") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = prompt, onValueChange = { prompt = it }, modifier = Modifier.weight(1f), placeholder = { Text("Buat tugas bertahap baru...") })
+                OutlinedTextField(value = prompt, onValueChange = { prompt = it }, modifier = Modifier.weight(1f), placeholder = { Text("Contoh: Buka TikTok / Buat tugas baru...") })
                 Button(enabled = !vm.agentBusy, onClick = { if (prompt.isNotBlank()) { vm.sendChatCommand(prompt); prompt = "" } }) { Text("Jalankan") }
             }
         }
@@ -512,6 +566,16 @@ fun SettingsScreen(vm: NexusViewModel, onNavigate: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Pengaturan & Custom AI Router", style = MaterialTheme.typography.headlineMedium) }
         item { AiRouterConfigSection(vm = vm) }
+        item {
+            NexusCard {
+                Text("Pintasan Cepat Sistem", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("diagnostics") }) { Text("Buka Diagnostics") }
+                    OutlinedButton(modifier = Modifier.weight(1f), onClick = { onNavigate("video") }) { Text("Pengaturan Video AI") }
+                }
+            }
+        }
         item {
             NexusCard {
                 Text("Tampilan & Tema", style = MaterialTheme.typography.titleMedium)

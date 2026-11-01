@@ -23,6 +23,27 @@ def _migrate_skills_columns(conn: sqlite3.Connection):
         "ALTER TABLE skills ADD COLUMN raw_content TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE skills ADD COLUMN validation_errors_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE skills ADD COLUMN missing_tools_json TEXT NOT NULL DEFAULT '[]'",
+        """CREATE TABLE IF NOT EXISTS video_jobs (
+            id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            provider_name TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'text_to_video',
+            prompt TEXT NOT NULL,
+            enhanced_prompt TEXT NOT NULL DEFAULT '',
+            image_url TEXT NOT NULL DEFAULT '',
+            duration_sec INTEGER NOT NULL DEFAULT 5,
+            aspect_ratio TEXT NOT NULL DEFAULT '16:9',
+            resolution TEXT NOT NULL DEFAULT '720p',
+            remote_job_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress_percent INTEGER NOT NULL DEFAULT 0,
+            video_url TEXT NOT NULL DEFAULT '',
+            local_file_path TEXT NOT NULL DEFAULT '',
+            error_message TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
     ]
     for sql in migrations:
         try:
@@ -273,6 +294,28 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     details_json TEXT NOT NULL DEFAULT '{}',
     runtime TEXT NOT NULL DEFAULT 'local',
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_jobs (
+    id TEXT PRIMARY KEY,
+    provider_id TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'text_to_video',
+    prompt TEXT NOT NULL,
+    enhanced_prompt TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
+    duration_sec INTEGER NOT NULL DEFAULT 5,
+    aspect_ratio TEXT NOT NULL DEFAULT '16:9',
+    resolution TEXT NOT NULL DEFAULT '720p',
+    remote_job_id TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'queued',
+    progress_percent INTEGER NOT NULL DEFAULT 0,
+    video_url TEXT NOT NULL DEFAULT '',
+    local_file_path TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 """
 

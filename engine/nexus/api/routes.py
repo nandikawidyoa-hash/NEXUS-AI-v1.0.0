@@ -12,7 +12,7 @@ from nexus.config import HOST, PORT, WORKSPACE_DIR
 from nexus.database.db import _utc_now, db_session, get_setting, log_activity, set_setting
 from nexus.memory.manager import MemoryManager
 from nexus.permissions.manager import PermissionManager
-from nexus.providers.manager import ProviderManager
+from nexus.providers.manager import ProviderManager, VideoGenerationManager
 from nexus.security.auth import require_auth
 from nexus.skills.manager import SkillManager
 from nexus.tools.manager import ToolManager
@@ -103,6 +103,23 @@ class DeviceStateReportRequest(BaseModel):
     network_type: str = "wifi"
     granted_permissions: List[str] = []
     saf_directories: List[str] = []
+
+class VideoProviderKeyRequest(BaseModel):
+    provider_id: str
+    api_key: str
+    base_url: Optional[str] = None
+
+class VideoGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    provider_id: str = "video-siliconflow"
+    model_name: str = "Wan-AI/Wan2.1-T2V-14B"
+    mode: str = "text_to_video"
+    image_url: str = ""
+    duration_sec: int = 5
+    aspect_ratio: str = "16:9"
+    resolution: str = "720p"
+    use_prompt_enhancement: bool = True
+    api_key: str = ""
 
 @router.get("/health")
 async def get_health():
@@ -366,6 +383,54 @@ async def delete_skill_endpoint(skill_id: str):
         return {"deleted": True}
     except PermissionError as pe:
         raise HTTPException(status_code=403, detail=str(pe))
+
+@router.get("/video/providers")
+async def get_video_providers():
+    return {"providers": VideoGenerationManager.get_providers_config()}
+
+@router.post("/video/providers/key")
+async def configure_video_provider_key(req: VideoProviderKeyRequest):
+    prov = VideoGenerationManager.configure_provider_key(req.provider_id, req.api_key, req.base_url)
+    return {"provider": prov}
+
+@router.get("/video/jobs")
+async def get_video_jobs():
+    return {"jobs": VideoGenerationManager.list_jobs()}
+
+@router.post("/video/generate")
+async def generate_video_endpoint(req: VideoGenerateRequest):
+    try:
+        job = await VideoGenerationManager.create_video_job(
+            prompt=req.prompt,
+            provider_id=req.provider_id,
+            model_name=req.model_name,
+            mode=req.mode,
+            image_url=req.image_url,
+            duration_sec=req.duration_sec,
+            aspect_ratio=req.aspect_ratio,
+            resolution=req.resolution,
+            use_prompt_enhancement=req.use_prompt_enhancement,
+            api_key_override=req.api_key,
+        )
+        return {"job": job}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/video/jobs/{job_id}/poll")
+async def poll_video_job_endpoint(job_id: str):
+    try:
+        job = await VideoGenerationManager.poll_video_job(job_id)
+        return {"job": job}
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+@router.post("/video/jobs/{job_id}/download")
+async def download_video_job_endpoint(job_id: str):
+    try:
+        job = await VideoGenerationManager.download_video_to_workspace(job_id)
+        return {"job": job}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @router.get("/memories")
 async def get_memories(category: Optional[str] = None, project_id: Optional[str] = None):

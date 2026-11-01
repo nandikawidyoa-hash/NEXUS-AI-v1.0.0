@@ -48,6 +48,8 @@ fun NexusAppShell(vm: NexusViewModel) {
                 "tasks" -> TasksScreen(vm = vm)
                 "skills" -> SkillsScreen(vm = vm)
                 "settings" -> SettingsScreen(vm = vm, onNavigate = { currentRoute = it })
+                "video" -> VideoGenScreen(vm = vm, onBack = { currentRoute = "home" })
+                "diagnostics" -> DiagnosticsScreen(vm = vm, onBack = { currentRoute = "home" })
                 "tools" -> ToolManagerScreen(vm = vm, onBack = { currentRoute = "home" })
                 "memory" -> MemoryManagerScreen(vm = vm, onBack = { currentRoute = "home" })
                 "automations" -> AutomationCenterScreen(vm = vm, onBack = { currentRoute = "home" })

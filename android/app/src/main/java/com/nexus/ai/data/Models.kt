@@ -101,6 +101,52 @@ data class AutomationItemModel(
     val lastStatus: String
 )
 
+data class AutomationQueueTaskModel(
+    val id: String,
+    val title: String,
+    val command: String,
+    val actionType: String,
+    val targetApp: String,
+    val status: String,
+    val progressPercent: Int,
+    val attempt: Int,
+    val maxRetries: Int,
+    val resultMessage: String,
+    val errorMessage: String = "",
+    val logs: List<String> = emptyList(),
+    val createdAt: String = ""
+)
+
+data class VideoJobModel(
+    val id: String,
+    val providerId: String,
+    val providerName: String,
+    val modelName: String,
+    val mode: String,
+    val prompt: String,
+    val enhancedPrompt: String,
+    val imageUrl: String = "",
+    val durationSec: Int = 5,
+    val aspectRatio: String = "16:9",
+    val resolution: String = "720p",
+    val remoteJobId: String = "",
+    val status: String = "queued",
+    val progressPercent: Int = 0,
+    val videoUrl: String = "",
+    val localFilePath: String = "",
+    val errorMessage: String = "",
+    val createdAt: String = ""
+)
+
+data class DiagnosticCheckItem(
+    val id: String,
+    val category: String,
+    val title: String,
+    val statusLabel: String,
+    val passed: Boolean,
+    val detail: String
+)
+
 data class ApprovalItemModel(
     val id: String,
     val taskId: String?,
