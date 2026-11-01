@@ -11,18 +11,21 @@
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
+            <category android:name="android.intent.action.LAUNCHER" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- TikTok (Indonesia/SEA, Global, Lite) -->
         <package android:name="com.ss.android.ugc.trill" />
         <package android:name="com.zhiliaoapp.musically" />
         <package android:name="com.zhiliaoapp.musically.go" />
         <package android:name="com.ss.android.ugc.aweme" />
+        <!-- WhatsApp & WhatsApp Business -->
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <!-- Chrome, YouTube, Instagram, Telegram, Termux -->
         <package android:name="com.android.chrome" />
         <package android:name="com.google.android.youtube" />
         <package android:name="com.instagram.android" />

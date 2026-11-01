@@ -102,10 +102,10 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
     private val cancelledQueueIds = mutableSetOf<String>()
 
     init {
-        seedDefaults()
-        refreshDeviceBridgeState()
-        refreshAll()
-        connectRealtimeSocket()
+        runCatching { seedDefaults() }
+        runCatching { refreshDeviceBridgeState() }
+        runCatching { refreshAll() }
+        runCatching { connectRealtimeSocket() }
     }
 
     private fun nowFormatted(): String {

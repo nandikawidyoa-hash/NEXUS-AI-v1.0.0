@@ -44,13 +44,12 @@ data class ForegroundActivationResult(
 
 object DeviceBridge {
 
-    // Mapping alias aplikasi populer di Indonesia & Global ke daftar package name resmi
     val KNOWN_APP_PACKAGES: Map<String, Pair<String, List<String>>> = mapOf(
         "tiktok" to ("TikTok" to listOf(
-            "com.ss.android.ugc.trill",      // TikTok Indonesia / SEA (Google Play resmi)
-            "com.zhiliaoapp.musically",      // TikTok Global
-            "com.zhiliaoapp.musically.go",   // TikTok Lite
-            "com.ss.android.ugc.aweme"       // Douyin / TikTok CN
+            "com.ss.android.ugc.trill",
+            "com.zhiliaoapp.musically",
+            "com.zhiliaoapp.musically.go",
+            "com.ss.android.ugc.aweme"
         )),
         "whatsapp" to ("WhatsApp" to listOf(
             "com.whatsapp",
@@ -102,19 +101,29 @@ object DeviceBridge {
         ))
     )
 
-    fun readBatteryStatus(context: Context): BatteryTelemetry {
-        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    fun readBatteryStatus(context: Context): BatteryTelemetry = runCatching {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.registerReceiver(
+                context,
+                null,
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        }
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
         val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
             status == BatteryManager.BATTERY_STATUS_FULL
-        return BatteryTelemetry(percent = pct, isCharging = charging)
-    }
+        BatteryTelemetry(percent = pct, isCharging = charging)
+    }.getOrDefault(BatteryTelemetry(percent = 100, isCharging = true))
 
-    fun isNotificationPermissionGranted(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    fun isNotificationPermissionGranted(context: Context): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
@@ -122,7 +131,7 @@ object DeviceBridge {
         } else {
             true
         }
-    }
+    }.getOrDefault(true)
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean = runCatching {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -209,11 +218,10 @@ object DeviceBridge {
         }
     }
 
-    fun listInstalledLaunchableApps(context: Context): List<InstalledAppInfo> {
+    fun listInstalledLaunchableApps(context: Context): List<InstalledAppInfo> = runCatching {
         val pm = context.packageManager
         val discovered = linkedMapOf<String, InstalledAppInfo>()
 
-        // 1. Query all launcher activities
         runCatching {
             val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
@@ -232,7 +240,6 @@ object DeviceBridge {
             }
         }
 
-        // 2. Also probe known popular packages directly via getLaunchIntentForPackage
         for ((_, pair) in KNOWN_APP_PACKAGES) {
             val (displayName, pkgCandidates) = pair
             for (pkg in pkgCandidates) {
@@ -245,8 +252,8 @@ object DeviceBridge {
             }
         }
 
-        return discovered.values.sortedBy { it.appName.lowercase() }
-    }
+        discovered.values.sortedBy { it.appName.lowercase() }
+    }.getOrDefault(emptyList())
 
     fun openAppByQuery(context: Context, rawQuery: String): AppLaunchResult {
         val pm = context.packageManager
@@ -256,7 +263,6 @@ object DeviceBridge {
         }
         val lower = clean.lowercase()
 
-        // 1. Check direct alias in KNOWN_APP_PACKAGES (TikTok, WhatsApp, Chrome, YouTube, Instagram, Termux, etc.)
         val matchedAlias = KNOWN_APP_PACKAGES[lower] ?: KNOWN_APP_PACKAGES.entries.firstOrNull { (k, pair) ->
             lower == k || lower == pair.first.lowercase() || lower.contains(k)
         }?.value
@@ -286,7 +292,6 @@ object DeviceBridge {
                     }
                 }
             }
-            // Special web deep-link fallback check if user asked for TikTok / YouTube / Instagram and app isn't installed
             return AppLaunchResult(
                 success = false,
                 appName = friendlyName,
@@ -296,7 +301,6 @@ object DeviceBridge {
             )
         }
 
-        // 2. If user passed an exact package name like com.something.app
         if (clean.contains(".") && !clean.contains(" ")) {
             val directIntent = runCatching { pm.getLaunchIntentForPackage(clean) }.getOrNull()
             if (directIntent != null) {
@@ -310,7 +314,6 @@ object DeviceBridge {
             }
         }
 
-        // 3. Search across all installed launchable apps on the device
         val installed = listInstalledLaunchableApps(context)
         val matchedInstalled = installed.firstOrNull {
             it.appName.equals(clean, ignoreCase = true) || it.packageName.equals(clean, ignoreCase = true)
@@ -385,7 +388,6 @@ object DeviceBridge {
             }
         }
 
-        // Fallback to any default browser
         return try {
             val viewIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
