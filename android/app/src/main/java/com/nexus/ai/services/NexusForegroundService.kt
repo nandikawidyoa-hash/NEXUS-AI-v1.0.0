@@ -18,7 +18,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import com.nexus.ai.MainActivity
 
- : Service() {
+class NexusForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "nexus_agent_channel"
         const val NOTIFICATION_ID = 8765
@@ -182,7 +182,6 @@ class NexusAccessibilityService : AccessibilityService() {
                 if (performClickOnNodeOrParent(node)) return true
             }
 
-            // Fallback recursive search by contentDescription or partial text
             fun searchAndClick(node: AccessibilityNodeInfo?): Boolean {
                 if (node == null) return false
                 val t = node.text?.toString() ?: ""
@@ -228,7 +227,7 @@ class NexusAccessibilityService : AccessibilityService() {
                     if (fieldHint.isBlank()) return node
                     val t = node.text?.toString().orEmpty()
                     val d = node.contentDescription?.toString().orEmpty()
-                    val h = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val h = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         node.hintText?.toString().orEmpty()
                     } else ""
                     if (t.contains(fieldHint, true) || d.contains(fieldHint, true) || h.contains(fieldHint, true)) {
