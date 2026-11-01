@@ -16,7 +16,9 @@ import com.nexus.ai.services.DeviceBridge
 import com.nexus.ai.services.InstalledAppInfo
 import com.nexus.ai.services.NexusAccessibilityService
 import com.nexus.ai.services.NexusForegroundService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -103,9 +105,11 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         runCatching { seedDefaults() }
-        runCatching { refreshDeviceBridgeState() }
-        runCatching { refreshAll() }
-        runCatching { connectRealtimeSocket() }
+        viewModelScope.launch {
+            delay(150)
+            runCatching { refreshAll() }
+            runCatching { connectRealtimeSocket() }
+        }
     }
 
     private fun nowFormatted(): String {
@@ -236,7 +240,9 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshInstalledApps() {
         viewModelScope.launch {
             val ctx = getApplication<Application>()
-            val apps = DeviceBridge.listInstalledLaunchableApps(ctx)
+            val apps = withContext(Dispatchers.IO) {
+                runCatching { DeviceBridge.listInstalledLaunchableApps(ctx) }.getOrDefault(emptyList())
+            }
             installedApps.clear()
             installedApps.addAll(apps)
             appLauncherStatusMessage = "Terdeteksi ${apps.size} aplikasi terinstal yang siap dibuka melalui Device Bridge."
@@ -1232,12 +1238,20 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun connectRealtimeSocket() {
-        api.connectWebSocket(onEvent = { ev, data ->
-            if (ev == "chat_stream") {
-                streamingBuffer += data.optString("delta", "")
-                if (data.optBoolean("done", false)) { streamingBuffer = ""; refreshTasks() }
-            } else refreshAll()
-        }, onStatusChange = { wsConnected = it })
+        runCatching {
+            api.connectWebSocket(onEvent = { ev, data ->
+                viewModelScope.launch {
+                    if (ev == "chat_stream") {
+                        streamingBuffer += data.optString("delta", "")
+                        if (data.optBoolean("done", false)) { streamingBuffer = ""; refreshTasks() }
+                    } else {
+                        refreshAll()
+                    }
+                }
+            }, onStatusChange = { status ->
+                viewModelScope.launch { wsConnected = status }
+            })
+        }
     }
 
     fun refreshAll() {
