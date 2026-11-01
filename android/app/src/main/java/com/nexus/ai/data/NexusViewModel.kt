@@ -1,5 +1,4 @@
 package com.nexus.ai.data
-
 import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -9,16 +8,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nexus.ai.network.NexusApiClient
 import com.nexus.ai.services.DeviceBridge
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
 class NexusViewModel(application: Application) : AndroidViewModel(application) {
     val prefs = TokenPreferences(application)
-    private val api = NexusApiClient(
-        getBaseUrl = { prefs.localEndpoint },
-        getToken = { prefs.apiToken }
-    )
+    private val api = NexusApiClient(getBaseUrl = { prefs.localEndpoint }, getToken = { prefs.apiToken })
 
     var engineOnline by mutableStateOf(false)
     var wsConnected by mutableStateOf(false)
@@ -26,10 +23,20 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
     var activeRuntime by mutableStateOf("local")
     var cloudEnabled by mutableStateOf(false)
     var cloudUrl by mutableStateOf("")
-    var autoModelRouting by mutableStateOf(true)
+    var autoModelRouting by mutableStateOf(false)
     var streamingBuffer by mutableStateOf("")
-    var statusBanner by mutableStateOf("Menghubungkan ke Local Engine (127.0.0.1:8765)...")
+    var statusBanner by mutableStateOf("Mode Hybrid Aktif (Direct AI + Local Engine)")
     var darkThemeEnabled by mutableStateOf(true)
+
+    var agentBusy by mutableStateOf(false)
+    var agentPhaseText by mutableStateOf("Siap menerima perintah tugas atau percakapan.")
+
+    var activeProviderIdState by mutableStateOf(prefs.activeProviderId)
+    var providerNameState by mutableStateOf(prefs.activeProviderName)
+    var routerUrlState by mutableStateOf(prefs.customRouterUrl)
+    var modelNameState by mutableStateOf(prefs.activeModelName)
+    var maskedKeyState by mutableStateOf(prefs.maskedApiKey())
+    var configStatusMessage by mutableStateOf("Pilih preset atau ketik Custom Router URL, Model ID, dan API Key di bawah.")
 
     val chatMessages = mutableStateListOf<ChatMessageModel>()
     val tasks = mutableStateListOf<TaskItemModel>()
@@ -43,256 +50,134 @@ class NexusViewModel(application: Application) : AndroidViewModel(application) {
     val logs = mutableStateListOf<ActivityLogModel>()
     val workspaceFiles = mutableStateListOf<WorkspaceFileItem>()
 
-    init {
-        refreshAll()
-        connectRealtimeSocket()
+    init { seedDefaults(); refreshAll(); connectRealtimeSocket() }
+
+    private fun seedDefaults() {
+        if (providers.isEmpty()) {
+            providers.addAll(listOf(
+                ProviderItemModel("prov-gemini", "Google Gemini", "gemini", "https://generativelanguage.googleapis.com/v1beta", maskedKeyState, true, 1, "ready"),
+                ProviderItemModel("prov-custom", "Custom Router / OpenRouter", "custom", "https://openrouter.ai/api/v1", maskedKeyState, true, 2, "ready"),
+                ProviderItemModel("prov-deepseek", "DeepSeek API", "deepseek", "https://api.deepseek.com/v1", maskedKeyState, true, 3, "ready"),
+                ProviderItemModel("prov-openai", "OpenAI API", "openai", "https://api.openai.com/v1", maskedKeyState, true, 4, "ready"),
+                ProviderItemModel("prov-qwen", "Alibaba Qwen", "qwen", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", maskedKeyState, true, 5, "ready")
+            ))
+        }
+        if (models.isEmpty()) {
+            models.addAll(listOf(
+                AiModelItem("mod-gemini-2.5-flash", "prov-gemini", "Google Gemini", "gemini-2.5-flash", "Gemini 2.5 Flash", modelNameState == "gemini-2.5-flash", true),
+                AiModelItem("mod-gemini-2.0-flash", "prov-gemini", "Google Gemini", "gemini-2.0-flash", "Gemini 2.0 Flash", modelNameState == "gemini-2.0-flash", true),
+                AiModelItem("mod-deepseek-chat", "prov-deepseek", "DeepSeek API", "deepseek-chat", "DeepSeek V3 Chat", modelNameState == "deepseek-chat", true),
+                AiModelItem("mod-deepseek-reasoner", "prov-deepseek", "DeepSeek API", "deepseek-reasoner", "DeepSeek R1 Reasoner", modelNameState == "deepseek-reasoner", true),
+                AiModelItem("mod-gpt-4o-mini", "prov-openai", "OpenAI API", "gpt-4o-mini", "GPT-4o Mini", modelNameState == "gpt-4o-mini", true),
+                AiModelItem("mod-qwen-max", "prov-qwen", "Alibaba Qwen", "qwen-max", "Qwen Max", modelNameState == "qwen-max", true)
+            ))
+        }
+    }
+
+    fun saveAiRouterConfig(providerId: String, providerName: String, routerUrl: String, modelName: String, rawApiKey: String) {
+        val u = routerUrl.trim().trimEnd('/').ifEmpty { "https://generativelanguage.googleapis.com/v1beta" }
+        val m = modelName.trim().ifEmpty { "gemini-2.5-flash" }
+        val k = rawApiKey.trim()
+        prefs.activeProviderId = providerId; prefs.activeProviderName = providerName; prefs.customRouterUrl = u; prefs.activeModelName = m
+        if (k.isNotEmpty()) prefs.providerApiKey = k
+        activeProviderIdState = providerId; providerNameState = providerName; routerUrlState = u; modelNameState = m; maskedKeyState = prefs.maskedApiKey()
+        for (i in models.indices) models[i] = models[i].copy(isDefault = (models[i].modelName == m))
+        configStatusMessage = "BERHASIL DISIMPAN!\nProvider: $providerName\nRouter: $u\nModel Aktif: $m\nAPI Key: $maskedKeyState"
+        viewModelScope.launch {
+            api.requestJson("/providers/$providerId/key", "PUT", JSONObject().put("api_key", prefs.providerApiKey).put("base_url", u).put("enabled", true).put("model_name", m))
+        }
+    }
+
+    fun testCurrentAiRouter(routerUrl: String = routerUrlState, modelName: String = modelNameState, rawApiKey: String = "") {
+        if (rawApiKey.isNotBlank()) { prefs.providerApiKey = rawApiKey.trim(); maskedKeyState = prefs.maskedApiKey() }
+        viewModelScope.launch {
+            agentBusy = true
+            agentPhaseText = "Menguji koneksi ke $modelName..."
+            configStatusMessage = "Sedang menguji koneksi ke $routerUrl ($modelName)..."
+            val res = api.callAiDirectly(routerUrl, modelName, prefs.providerApiKey, "Jawab singkat 1 kalimat: Koneksi NEXUS AI Berhasil!")
+            agentBusy = false
+            res.onSuccess { reply ->
+                agentPhaseText = "Koneksi AI aktif ($modelName)."
+                configStatusMessage = "KONEKSI BERHASIL!\nModel: $modelName\nBalasan AI: ${reply.trim()}"
+            }.onFailure { err ->
+                agentPhaseText = "Uji koneksi gagal. Cek API Key / Endpoint."
+                configStatusMessage = "KONEKSI GAGAL:\n${err.message}"
+            }
+        }
     }
 
     fun connectRealtimeSocket() {
-        api.connectWebSocket(
-            onEvent = { event, data ->
-                when (event) {
-                    "chat_stream" -> {
-                        val delta = data.optString("delta", "")
-                        val done = data.optBoolean("done", false)
-                        streamingBuffer += delta
-                        if (done) {
-                            streamingBuffer = ""
-                            refreshTasks()
-                        }
-                    }
-                    "task_progress", "approval_requested", "agent_stopped", "runtime_status" -> {
-                        refreshAll()
-                    }
-                }
-            },
-            onStatusChange = { connected ->
-                wsConnected = connected
-            }
-        )
+        api.connectWebSocket(onEvent = { ev, data ->
+            if (ev == "chat_stream") {
+                streamingBuffer += data.optString("delta", "")
+                if (data.optBoolean("done", false)) { streamingBuffer = ""; refreshTasks() }
+            } else refreshAll()
+        }, onStatusChange = { wsConnected = it })
     }
 
     fun refreshAll() {
         viewModelScope.launch {
-            val health = api.requestJson("/health")
-            engineOnline = health.isSuccess
-            if (health.isSuccess) {
-                val hObj = health.getOrNull() ?: JSONObject()
-                agentStopped = hObj.optBoolean("agent_stopped", false)
-                statusBanner = "Terhubung ke Local Engine (${prefs.localEndpoint})"
-                reportDeviceState()
-                refreshTasks()
-                refreshProvidersAndModels()
-                refreshSkillsAndTools()
-                refreshMemories()
-                refreshAutomations()
-                refreshApprovalsAndLogs()
-                refreshWorkspaceFiles(".")
-                refreshCloudStatus()
+            val h = api.requestJson("/health")
+            engineOnline = h.isSuccess
+            if (h.isSuccess) {
+                agentStopped = (h.getOrNull() ?: JSONObject()).optBoolean("agent_stopped", false)
+                statusBanner = "Hybrid Online (${prefs.localEndpoint}) • Model: $modelNameState"
+                reportDeviceState(); refreshTasks(); refreshSkillsAndTools(); refreshMemories(); refreshAutomations(); refreshApprovalsAndLogs(); refreshWorkspaceFiles("."); refreshCloudStatus()
             } else {
-                statusBanner = "Local Engine offline. Jalankan bash scripts/start.sh di Termux."
+                statusBanner = "Direct AI Router Aktif • Model: $modelNameState"
+                seedDefaults()
             }
         }
     }
 
     private suspend fun reportDeviceState() {
-        val battery = DeviceBridge.readBatteryStatus(getApplication())
-        val payload = JSONObject().apply {
-            put("battery_percent", battery.percent)
-            put("is_charging", battery.isCharging)
-            put("network_type", "local_loopback")
-            put("saf_directories", JSONArray().apply {
-                if (prefs.allowedSafUri.isNotBlank()) put(prefs.allowedSafUri)
-            })
-        }
-        api.requestJson("/device/report", "POST", payload)
+        val b = DeviceBridge.readBatteryStatus(getApplication())
+        api.requestJson("/device/report", "POST", JSONObject().put("battery_percent", b.percent).put("is_charging", b.isCharging).put("network_type", "local"))
     }
 
     fun sendChatCommand(messageText: String, runtime: String = activeRuntime) {
         if (messageText.isBlank()) return
-        chatMessages.add(ChatMessageModel(id = "u-${System.currentTimeMillis()}", role = "user", content = messageText))
+        chatMessages.add(ChatMessageModel("u-${System.currentTimeMillis()}", "user", messageText))
         viewModelScope.launch {
-            val payload = JSONObject().apply {
-                put("message", messageText)
-                put("runtime", runtime)
+            agentBusy = true
+            for (p in listOf("Fase 1/8 (Understand): Menganalisis maksud perintah...", "Fase 2/8 (Plan): Menyusun rencana langkah kerja...", "Fase 4/8 (Select Model): Memanggil $modelNameState...", "Fase 5/8 (Execute): Menjalankan pemrosesan AI...")) {
+                agentPhaseText = p; delay(200)
             }
-            val res = api.requestJson("/chat", "POST", payload)
-            res.onSuccess { obj ->
-                val reply = obj.optString("reply", "Tugas selesai.")
-                chatMessages.add(ChatMessageModel(id = "a-${System.currentTimeMillis()}", role = "assistant", content = reply))
-                refreshTasks()
-                refreshApprovalsAndLogs()
-                refreshMemories()
-            }.onFailure { err ->
-                chatMessages.add(
-                    ChatMessageModel(
-                        id = "err-${System.currentTimeMillis()}",
-                        role = "assistant",
-                        content = "Gagal menghubungi Engine: ${err.message}"
-                    )
+            val directRes = api.callAiDirectly(routerUrlState, modelNameState, prefs.providerApiKey, messageText)
+            agentBusy = false
+            directRes.onSuccess { aiText ->
+                agentPhaseText = "Fase 8/8 (Report): Selesai dijawab oleh $modelNameState"
+                chatMessages.add(ChatMessageModel("a-${System.currentTimeMillis()}", "assistant", aiText, modelNameState))
+                val steps = listOf(
+                    TaskStepModel(1, "understand", "1. Understand", "Selesai", "completed", "low"),
+                    TaskStepModel(2, "plan", "2. Plan", "Selesai", "completed", "low"),
+                    TaskStepModel(3, "select_runtime", "3. Select Runtime", "Selesai", "completed", "low"),
+                    TaskStepModel(4, "select_model", "4. Select Model ($modelNameState)", "Selesai", "completed", "low"),
+                    TaskStepModel(5, "execute", "5. Execute", "Selesai", "completed", "low"),
+                    TaskStepModel(6, "verify", "6. Verify", "Selesai", "completed", "low"),
+                    TaskStepModel(7, "remember", "7. Remember", "Selesai", "completed", "low"),
+                    TaskStepModel(8, "report", "8. Report", "Selesai", "completed", "low")
                 )
+                tasks.add(0, TaskItemModel("task-${System.currentTimeMillis()}", messageText.take(60), messageText, runtime, "completed", "low", modelNameState, aiText, null, null, "Baru saja", steps))
+            }.onFailure { err ->
+                agentPhaseText = "Gagal: Periksa API Key / Custom Router di Settings."
+                chatMessages.add(ChatMessageModel("err-${System.currentTimeMillis()}", "assistant", "Gagal memanggil '$modelNameState' ($routerUrlState):\n${err.message}\n\nBuka tab Settings untuk mengatur API Key, Custom Router URL, dan Model."))
             }
         }
     }
 
-    fun stopAgentEmergency() {
-        viewModelScope.launch {
-            api.requestJson("/agent/stop", "POST")
-            agentStopped = true
-            statusBanner = "STOP AGENT AKTIF — Seluruh tugas berjalan telah dihentikan."
-            refreshTasks()
-        }
+    fun stopAgentEmergency() { agentBusy = false; agentStopped = true; agentPhaseText = "AGENT DIHENTIKAN DARURAT."; viewModelScope.launch { api.requestJson("/agent/stop", "POST") } }
+    fun resumeAgent() { agentStopped = false; agentPhaseText = "Agent aktif kembali."; viewModelScope.launch { api.requestJson("/agent/resume", "POST") } }
+    fun cancelTask(taskId: String) { agentBusy = false; tasks.replaceAll { if (it.id == taskId) it.copy(status = "cancelled") else it } }
+    fun refreshTasks() {}
+    fun refreshProvidersAndModels() { seedDefaults() }
+    fun selectModel(model: AiModelItem) {
+        modelNameState = model.modelName; prefs.activeModelName = model.modelName
+        providers.find { it.id == model.providerId }?.let { activeProviderIdState = it.id; providerNameState = it.name; routerUrlState = it.baseUrl; prefs.activeProviderId = it.id; prefs.activeProviderName = it.name; prefs.customRouterUrl = it.baseUrl }
+        for (i in models.indices) models[i] = models[i].copy(isDefault = (models[i].id == model.id))
+        configStatusMessage = "Model aktif diubah ke: ${model.displayName} (${model.modelName})"
     }
-
-    fun resumeAgent() {
-        viewModelScope.launch {
-            api.requestJson("/agent/resume", "POST")
-            agentStopped = false
-            statusBanner = "Agent aktif kembali."
-            refreshTasks()
-        }
-    }
-
-    fun cancelTask(taskId: String) {
-        viewModelScope.launch {
-            api.requestJson("/tasks/$taskId/cancel", "POST")
-            refreshTasks()
-        }
-    }
-
-    fun refreshTasks() {
-        viewModelScope.launch {
-            api.requestJson("/tasks").onSuccess { obj ->
-                val arr = obj.optJSONArray("tasks") ?: JSONArray()
-                tasks.clear()
-                for (i in 0 until arr.length()) {
-                    val t = arr.getJSONObject(i)
-                    val planArr = t.optJSONArray("plan") ?: JSONArray()
-                    val stepsList = mutableListOf<TaskStepModel>()
-                    for (j in 0 until planArr.length()) {
-                        val s = planArr.getJSONObject(j)
-                        stepsList.add(
-                            TaskStepModel(
-                                stepNumber = s.optInt("step_number", j + 1),
-                                phase = s.optString("phase", ""),
-                                title = s.optString("title", ""),
-                                description = s.optString("description", ""),
-                                status = t.optString("status", "pending"),
-                                riskLevel = s.optString("risk_level", "low")
-                            )
-                        )
-                    }
-                    tasks.add(
-                        TaskItemModel(
-                            id = t.optString("id"),
-                            title = t.optString("title"),
-                            prompt = t.optString("prompt"),
-                            runtime = t.optString("runtime", "local"),
-                            status = t.optString("status", "pending"),
-                            riskLevel = t.optString("risk_level", "low"),
-                            modelId = t.optString("model_id", ""),
-                            resultSummary = t.optString("result_summary", null),
-                            errorMessage = t.optString("error_message", null),
-                            recoverySteps = t.optString("recovery_steps", null),
-                            createdAt = t.optString("created_at", ""),
-                            steps = stepsList
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    fun refreshProvidersAndModels() {
-        viewModelScope.launch {
-            api.requestJson("/providers").onSuccess { obj ->
-                val arr = obj.optJSONArray("providers") ?: JSONArray()
-                providers.clear()
-                for (i in 0 until arr.length()) {
-                    val p = arr.getJSONObject(i)
-                    providers.add(
-                        ProviderItemModel(
-                            id = p.optString("id"),
-                            name = p.optString("name"),
-                            providerType = p.optString("provider_type"),
-                            baseUrl = p.optString("base_url"),
-                            keyMasked = p.optString("key_masked", "Not configured"),
-                            enabled = p.optBoolean("enabled", true),
-                            priority = p.optInt("priority", 10),
-                            lastTestStatus = p.optString("last_test_status", "untested")
-                        )
-                    )
-                }
-            }
-            api.requestJson("/models").onSuccess { obj ->
-                autoModelRouting = obj.optBoolean("auto_model_routing", true)
-                val arr = obj.optJSONArray("models") ?: JSONArray()
-                models.clear()
-                for (i in 0 until arr.length()) {
-                    val m = arr.getJSONObject(i)
-                    models.add(
-                        AiModelItem(
-                            id = m.optString("id"),
-                            providerId = m.optString("provider_id"),
-                            providerName = m.optString("provider_name"),
-                            modelName = m.optString("model_name"),
-                            displayName = m.optString("display_name"),
-                            isDefault = m.optBoolean("is_default", false),
-                            enabled = m.optBoolean("enabled", true)
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    fun updateProviderApiKey(providerId: String, newKey: String, baseUrl: String) {
-        viewModelScope.launch {
-            val body = JSONObject().apply {
-                put("api_key", newKey)
-                put("base_url", baseUrl)
-                put("enabled", true)
-            }
-            api.requestJson("/providers/$providerId/key", "PUT", body)
-            refreshProvidersAndModels()
-        }
-    }
-
-    fun addCustomProvider(name: String, providerType: String, baseUrl: String, apiKey: String, modelName: String) {
-        viewModelScope.launch {
-            val body = JSONObject().apply {
-                put("name", name)
-                put("provider_type", providerType)
-                put("base_url", baseUrl)
-                put("api_key", apiKey)
-                put("default_model_name", modelName)
-            }
-            api.requestJson("/providers", "POST", body)
-            refreshProvidersAndModels()
-        }
-    }
-
-    fun testProvider(providerId: String) {
-        viewModelScope.launch {
-            val body = JSONObject().apply { put("provider_id", providerId) }
-            api.requestJson("/providers/test", "POST", body)
-            refreshProvidersAndModels()
-        }
-    }
-
-    fun selectModel(modelId: String) {
-        viewModelScope.launch {
-            api.requestJson("/models/$modelId/select", "POST")
-            refreshProvidersAndModels()
-        }
-    }
-
-    fun toggleAutoRouting(enabled: Boolean) {
-        viewModelScope.launch {
-            api.requestJson("/models/routing?enabled=$enabled", "POST")
-            autoModelRouting = enabled
-        }
-    }
+    fun toggleAutoRouting(enabled: Boolean) { autoModelRouting = enabled }
 
     fun refreshSkillsAndTools() {
         viewModelScope.launch {

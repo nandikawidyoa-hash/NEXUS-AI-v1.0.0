@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.nexus.ai.components.NexusAgentCharacterCard
 import com.nexus.ai.components.NexusCard
 import com.nexus.ai.components.RiskBadge
 import com.nexus.ai.data.NexusViewModel
@@ -253,86 +254,20 @@ fun DeviceManagerScreen(vm: NexusViewModel, onBack: () -> Unit) {
 
 @Composable
 fun ProviderManagerScreen(vm: NexusViewModel, onBack: () -> Unit) {
-    var selectedProviderId by remember { mutableStateOf("") }
-    var apiKeyInput by remember { mutableStateOf("") }
-    var baseUrlInput by remember { mutableStateOf("") }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item { SubScreenHeader("Multi-Provider AI & Model Routing", onBack) }
-        item {
-            NexusCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto Model Routing & Fallback", style = MaterialTheme.typography.titleMedium)
-                        Text("Memilih model terbaik secara otomatis dan beralih ke provider cadangan jika gagal.")
-                    }
-                    Switch(checked = vm.autoModelRouting, onCheckedChange = { vm.toggleAutoRouting(it) })
-                }
-            }
-        }
-        items(vm.providers) { prov ->
-            NexusCard {
-                Text("${prov.name} (${prov.providerType.uppercase()})", style = MaterialTheme.typography.titleMedium)
-                Text("Endpoint: ${prov.baseUrl}", style = MaterialTheme.typography.labelSmall)
-                Text("API Key (Terenkripsi): ${prov.keyMasked} • Status Uji: ${prov.lastTestStatus}", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { vm.testProvider(prov.id) }) { Text("Uji Koneksi") }
-                    OutlinedButton(onClick = {
-                        selectedProviderId = prov.id
-                        baseUrlInput = prov.baseUrl
-                    }) { Text("Atur API Key") }
-                }
-                if (selectedProviderId == prov.id) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = apiKeyInput,
-                        onValueChange = { apiKeyInput = it },
-                        label = { Text("API Key Baru (Tidak akan ditampilkan penuh)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = baseUrlInput,
-                        onValueChange = { baseUrlInput = it },
-                        label = { Text("Base URL") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Button(onClick = {
-                        vm.updateProviderApiKey(prov.id, apiKeyInput, baseUrlInput)
-                        apiKeyInput = ""
-                        selectedProviderId = ""
-                    }) { Text("Simpan Terenkripsi") }
-                }
-            }
-        }
-        item {
-            Text("Daftar Model AI Tersedia", style = MaterialTheme.typography.titleMedium)
-        }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { SubScreenHeader("Multi-Provider & Custom Router", onBack) }
+        item { NexusAgentCharacterCard(vm.agentBusy, vm.agentPhaseText, "${vm.providerNameState} (${vm.modelNameState})") }
+        item { AiRouterConfigSection(vm = vm) }
         items(vm.models) { model ->
+            val active = (vm.modelNameState == model.modelName)
             NexusCard {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
                         Text(model.displayName, style = MaterialTheme.typography.titleMedium)
                         Text("${model.providerName} • ID: ${model.modelName}", style = MaterialTheme.typography.labelSmall)
                     }
-                    if (model.isDefault) {
-                        Text("DEFAULT", color = MaterialTheme.colorScheme.primary)
-                    } else {
-                        OutlinedButton(onClick = { vm.selectModel(model.id) }) { Text("Pilih Manual") }
-                    }
+                    if (active) Button(onClick = {}) { Text("AKTIF") }
+                    else OutlinedButton(onClick = { vm.selectModel(model) }) { Text("Pilih Model") }
                 }
             }
         }

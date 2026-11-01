@@ -55,6 +55,38 @@ class NexusApiClient(
             }
         }
 
+    suspend fun callAiDirectly(routerUrl: String, modelName: String, apiKey: String, userPrompt: String, systemPrompt: String = "Kamu adalah NEXUS AI, personal Android AI Agent."): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val u = routerUrl.trim().trimEnd('/')
+            val k = apiKey.trim()
+            if (k.isEmpty()) throw IllegalArgumentException("API Key belum diisi di menu Settings / AI Providers.")
+            if (u.contains("generativelanguage.googleapis.com") && !u.contains("/openai")) {
+                var lastE = "Gemini Error"
+                for (gm in linkedSetOf(modelName.trim(), "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash")) {
+                    if (gm.isBlank()) continue
+                    val p = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", "$systemPrompt\n\n$userPrompt")))))
+                    val req = Request.Builder().url("$u/models/$gm:generateContent?key=$k").addHeader("Content-Type", "application/json").post(p.toString().toRequestBody(jsonMedia)).build()
+                    client.newCall(req).execute().use { r ->
+                        val b = r.body?.string() ?: ""
+                        if (r.isSuccessful) return@runCatching JSONObject(b).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+                        lastE = "HTTP ${r.code}: ${b.take(140)}"
+                    }
+                }
+                throw IllegalStateException(lastE)
+            } else {
+                val url = if (u.endsWith("/chat/completions")) u else "$u/chat/completions"
+                val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", systemPrompt)).put(JSONObject().put("role", "user").put("content", userPrompt))
+                val p = JSONObject().put("model", modelName.trim()).put("messages", msgs)
+                val req = Request.Builder().url(url).addHeader("Authorization", "Bearer $k").addHeader("Content-Type", "application/json").post(p.toString().toRequestBody(jsonMedia)).build()
+                client.newCall(req).execute().use { r ->
+                    val b = r.body?.string() ?: ""
+                    if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}: ${b.take(140)}")
+                    JSONObject(b).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                }
+            }
+        }
+    }
+
     fun connectWebSocket(onEvent: (String, JSONObject) -> Unit, onStatusChange: (Boolean) -> Unit) {
         webSocket?.cancel()
         val wsUrl = getBaseUrl()
