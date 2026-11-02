@@ -4,6 +4,18 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+import inspect
+import httpx
+
+_orig_client_init = httpx.Client.__init__
+if 'app' not in inspect.signature(_orig_client_init).parameters:
+    def _compat_client_init(self, *args, app=None, transport=None, **kwargs):
+        if app is not None and transport is None:
+            if hasattr(httpx, 'ASGITransport'):
+                transport = httpx.ASGITransport(app=app)
+        return _orig_client_init(self, *args, transport=transport, **kwargs)
+    httpx.Client.__init__ = _compat_client_init
+
 from starlette.testclient import TestClient
 
 from nexus.config import SKILLS_DIR
