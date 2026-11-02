@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:02,500
+Pemandangan pegunungan Indonesia saat matahari terbit
+
+2
+00:00:02,500 --> 00:00:05,000
+Pemandangan pegunungan Indonesia saat matahari terbit. Style: high detail, photorealistic 

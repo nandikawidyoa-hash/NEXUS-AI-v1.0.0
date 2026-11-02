@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solusi Bisnis Modern — Buat website bisnis saya sampai siap diuji</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <nav class="navbar">
+      <div class="logo">NEXUS<span>BIZ</span></div>
+      <div class="nav-links">
+        <a href="#fitur">Keunggulan</a>
+        <a href="#layanan">Layanan</a>
+        <a href="#kalkulator">Estimasi ROI</a>
+        <a href="#kontak" class="btn-primary">Hubungi Kami</a>
+      </div>
+    </nav>
+    <div class="hero-content">
+      <span class="badge">Platform Terverifikasi AI</span>
+      <h1>Transformasi Bisnis Anda Lebih Cepat & Terukur</h1>
+      <p>Dibangun otomatis oleh NEXUS AI Coding & Marketing Agent untuk: Buat website bisnis saya sampai siap diuji</p>
+      <div class="cta-group">
+        <button onclick="openDemoModal()" class="btn-cta">Coba Demo Interaktif</button>
+        <a href="#fitur" class="btn-secondary">Pelajari Fitur</a>
+      </div>
+    </div>
+  </header>
+
+  <section id="fitur" class="features">
+    <h2>Keunggulan Utama Bisnis Kami</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>1. Layanan Cepat & Otomatis</h3>
+        <p>Proses pemesanan dan konsultasi pelanggan berjalan instan 24/7 tanpa hambatan.</p>
+      </div>
+      <div class="card">
+        <h3>2. Kualitas Terjamin</h3>
+        <p>Setiap produk dan layanan melewati pemeriksaan mutu ketat dengan garansi kepuasan.</p>
+      </div>
+      <div class="card">
+        <h3>3. Harga Transparan</h3>
+        <p>Paket layanan fleksibel sesuai skala bisnis dan kebutuhan operasional Anda.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="kalkulator" class="calculator">
+    <h2>Kalkulator Simulasi Pertumbuhan</h2>
+    <div class="calc-box">
+      <label>Target Pelanggan per Bulan: <span id="custVal">100</span></label>
+      <input type="range" id="custInput" min="10" max="1000" value="100" oninput="updateROI()">
+      <div id="roiResult" class="roi-output">Estimasi Peningkatan Efisiensi: +300 Jam/Bulan</div>
+    </div>
+  </section>
+
+  <footer id="kontak">
+    <p>&copy; 2026 NEXUS Autonomous Business Solution • Siap Diuji & Dipublikasikan</p>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

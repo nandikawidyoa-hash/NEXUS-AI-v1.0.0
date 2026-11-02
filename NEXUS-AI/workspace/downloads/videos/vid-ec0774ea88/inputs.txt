@@ -1,0 +1,9 @@
+file '/working_dir/c_cdbb502fb113b219/NEXUS-AI/workspace/downloads/videos/vid-ec0774ea88/frame_1_1.png'
+duration 1.25
+file '/working_dir/c_cdbb502fb113b219/NEXUS-AI/workspace/downloads/videos/vid-ec0774ea88/frame_1_2.png'
+duration 1.25
+file '/working_dir/c_cdbb502fb113b219/NEXUS-AI/workspace/downloads/videos/vid-ec0774ea88/frame_2_1.png'
+duration 1.25
+file '/working_dir/c_cdbb502fb113b219/NEXUS-AI/workspace/downloads/videos/vid-ec0774ea88/frame_2_2.png'
+duration 1.25
+file '/working_dir/c_cdbb502fb113b219/NEXUS-AI/workspace/downloads/videos/vid-ec0774ea88/frame_2_2.png'
