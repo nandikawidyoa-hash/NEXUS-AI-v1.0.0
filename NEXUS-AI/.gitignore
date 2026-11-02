@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.db
+*.db-journal
+*.db-wal
+.env
+.nexus_secret.key
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+workspace/backups/*
+!workspace/backups/.gitkeep

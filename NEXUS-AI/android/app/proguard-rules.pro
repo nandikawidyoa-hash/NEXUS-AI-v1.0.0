@@ -1,0 +1,2 @@
+-keep class com.nexus.ai.data.** { *; }
+-dontwarn okhttp3.**
